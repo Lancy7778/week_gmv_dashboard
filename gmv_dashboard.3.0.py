@@ -187,7 +187,7 @@ def main():
         df_dash["统计周期"].isin(selected_periods)
     ]
 
-    df_pivot = create_store(df_filtered, selected_periods)
+    df_pivot = create_store_pivot(df_filtered, selected_periods)
 
     # ========= 全局指标 =========
     st.markdown('<div class="section-title">🏁 全局总览</div>', unsafe_allow_html=True)
