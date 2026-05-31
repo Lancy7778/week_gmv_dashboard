@@ -165,7 +165,7 @@ def sort_period_key(period):
 # 加载数据
 @st.cache_data(ttl=3600)
 def load_all_excel(
-        folder: str = r"D:\儒易工作内容\每周汇报GMV\测试周GMV自动化流程\各店铺周汇总报表"
+        folder: str = r"./各店铺周汇总报表"
 ):
     excel_dir = Path(folder)
     excel_files = list(excel_dir.glob("*_多周汇总报表.xlsx"))
