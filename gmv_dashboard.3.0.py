@@ -19,11 +19,11 @@ PERIOD_COLOR_MAP = {
 def get_store_from_filename(file: Path) -> str:
     return file.stem.split("_")[0].strip()
 
-# 数据加载函数（云端路径修复）
+# 数据加载函数（云端相对路径，兼容Streamlit Cloud）
 @st.cache_data(ttl=3600)
 def load_all_excel(folder: str = "./各店铺周汇总报表") -> Dict[str, pd.DataFrame]:
     excel_dir = Path(folder)
-    excel_files = list(excel_dir.glob("*_多周汇总报表.xlsx"))
+    excel_files = list(excel_dir.glob("*_*周汇总报表.xlsx"))
     st.info(f"扫描到 {len(excel_files)} 个店铺Excel文件")
 
     all_dashboard = []
@@ -151,7 +151,7 @@ def main():
     df_filtered = dashboard[filter_condition].copy()
     df_pivot_table = create_store_pivot_table(df_filtered)
 
-    # ====================== 第一模块：全局总览5列指标 ======================
+    # ====================== 第一模块：全局总览5列指标卡片（优化颜色显示） ======================
     st.header("🏁 全局总览指标")
     all_period_total_gmv = df_filtered["GMV"].sum()
     latest_cycle = PERIOD_ORDER[-1]
@@ -162,6 +162,7 @@ def main():
     gmv_change_rate = (gmv_change_amount / last_cycle_total_gmv) * 100 if last_cycle_total_gmv != 0 else 0
     top_growth_store = df_pivot_table.sort_values("GMV环比%", ascending=False).iloc[0]["店铺"]
 
+    # 5列布局，环比自动变色
     col1, col2, col3, col4, col5 = st.columns(5)
     with col1:
         st.metric("全周期总GMV", f"{all_period_total_gmv:,.2f}")
@@ -170,12 +171,25 @@ def main():
     with col3:
         st.metric("GMV环比变化额", f"{gmv_change_amount:,.2f}")
     with col4:
-        st.metric("GMV环比变化率", f"{gmv_change_rate:.1f}%", delta=f"{gmv_change_rate:.1f}%")
+        delta_text = f"{gmv_change_rate:.1f}%"
+        # 负数红色，正数绿色
+        delta_color = "inverse" if gmv_change_rate < 0 else "normal"
+        st.metric("GMV环比变化率", f"{gmv_change_rate:.1f}%", delta=delta_text, delta_color=delta_color)
     with col5:
         st.metric("GMV增长TOP店铺", top_growth_store)
+
+    # 新增业务状态提示文字
+    st.markdown("### 📌 业务状态提示")
+    if gmv_change_rate < -10:
+        st.error(f"⚠️ 本周GMV环比大幅下滑{abs(gmv_change_rate):.1f}%，请核查各店铺销量、广告投放数据")
+    elif gmv_change_rate < 0:
+        st.info(f"ℹ️ 本周GMV小幅回落{abs(gmv_change_rate):.1f}%，整体波动平稳，可重点参考增长店铺【{top_growth_store}】运营策略")
+    else:
+        st.success(f"✅ 本周GMV环比上涨{gmv_change_rate:.1f}%，全店铺销售额提升")
+    st.caption(f"💡 增长标杆店铺【{top_growth_store}】，可下拉页面查看TOP SKU榜单，提取爆款商品运营方案")
     st.markdown("---")
 
-    # ====================== 第二模块：多周期店铺对比 ======================
+    # ====================== 第二模块：多周期店铺对比图表 ======================
     st.header("📈 多周期店铺对比图表")
     c_compare1, c_compare2, c_compare3 = st.columns(3)
 
@@ -238,7 +252,7 @@ def main():
         st.plotly_chart(fig_trend, use_container_width=True)
     st.markdown("---")
 
-    # ====================== 第三模块：单店铺趋势 ======================
+    # ====================== 第三模块：单店铺筛选周度趋势 ======================
     st.header("📉 单店铺筛选周度趋势")
     c_single1, c_single2 = st.columns(2)
     with c_single1:
@@ -267,7 +281,7 @@ def main():
         st.plotly_chart(fig_single_sales, use_container_width=True)
     st.markdown("---")
 
-    # ====================== 第四模块：环比变化率 ======================
+    # ====================== 第四模块：各店铺GMV环比变化率横向柱状图 ======================
     st.header("📊 各店铺GMV环比变化率")
     fig_growth_bar = px.bar(
         df_pivot_table,
@@ -282,7 +296,7 @@ def main():
     st.plotly_chart(fig_growth_bar, use_container_width=True)
     st.markdown("---")
 
-    # ====================== 第五模块：GMV占比 ======================
+    # ====================== 第五模块：各店铺全周期GMV市场占比 ======================
     st.header("🥧 各店铺全周期GMV市场占比")
     df_pivot_table["全周期累计GMV"] = df_pivot_table[[f"{p} GMV" for p in PERIOD_ORDER]].sum(axis=1)
     pie_fig = px.pie(
@@ -301,7 +315,7 @@ def main():
     st.plotly_chart(pie_fig, use_container_width=True)
     st.markdown("---")
 
-    # ====================== 第六模块：店铺排名 ======================
+    # ====================== 第六模块：店铺本期GMV环比排名表格 ======================
     st.header("📈 店铺本期GMV环比排名")
     rank_display_df = df_pivot_table[["排名", "店铺", f"{latest_cycle} GMV", "GMV环比%"]].copy()
     st.dataframe(
@@ -314,7 +328,7 @@ def main():
     )
     st.markdown("---")
 
-    # ====================== 第七模块：明细表格 ======================
+    # ====================== 第七模块：店铺4周期GMV&销量完整明细表格 ======================
     st.header("📋 店铺全周期GMV&销量明细")
     format_dict = {}
     for p in PERIOD_ORDER:
@@ -333,16 +347,18 @@ def main():
     )
     st.markdown("---")
 
-    # ====================== 第八模块：TOP SKU ======================
+    # ====================== 第八模块：全平台TOP爆款SKU横向柱状图（你需要的核心图表） ======================
     st.header("🏆 全平台TOP核心SKU GMV榜单")
     if not sku_total.empty:
         sku_filter_df = sku_total[sku_total["店铺"].isin(selected_stores)].copy()
         sku_filter_df["全周期累计GMV"] = sku_filter_df["GMV"]
+        # 新增排序下拉选择框
         sort_type = st.selectbox(
             "SKU榜单排序依据",
             options=["全周期累计GMV 降序", "全周期累计GMV 升序", "销量 降序", "销量 升序"],
             index=0
         )
+        # 根据选择执行排序
         if sort_type == "全周期累计GMV 降序":
             sku_sorted = sku_filter_df.sort_values("全周期累计GMV", ascending=False)
         elif sort_type == "全周期累计GMV 升序":
@@ -350,7 +366,7 @@ def main():
         elif sort_type == "销量 降序":
             sku_sorted = sku_filter_df.sort_values("销量", ascending=False)
         else:
-            sku_sorted = sku_filter_df.sort_values("销量", ascending=True)
+            sku_sorted = sku_filter_df.sort_values("全周期累计GMV", ascending=True)
 
         top_sku_df = sku_sorted.head(top_sku_num)
         sku_bar_fig = px.bar(
@@ -364,6 +380,7 @@ def main():
         )
         sku_bar_fig.update_layout(height=500)
         st.plotly_chart(sku_bar_fig, use_container_width=True)
+        # SKU明细表格
         st.dataframe(
             top_sku_df[["店铺", "SKU", "商品名称", "全周期累计GMV", "销量"]]
             .style.format({"全周期累计GMV": "{:,.2f}", "销量": "{:.0f}"}),
