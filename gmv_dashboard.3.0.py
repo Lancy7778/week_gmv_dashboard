@@ -173,7 +173,6 @@ def load_all_excel() -> Dict[str, object]:
         excel_dir = Path(cloud_folder)
 
     excel_files = list(excel_dir.glob("*_*周汇总报表.xlsx"))
-    st.info(f"扫描到 {len(excel_files)} 个店铺Excel文件")
 
     all_dashboard = []
     all_sku_total = []
