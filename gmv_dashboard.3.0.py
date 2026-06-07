@@ -249,7 +249,8 @@ def load_all_excel() -> Dict[str, object]:
     if not dashboard_df.empty:
         all_periods = dashboard_df["统计周期"].unique().tolist()
         periods = sorted(all_periods, key=sort_period_key)
-        dashboard_df["统计周期"] = pd.Categorical(dashboard_df["统计周期"], categories=periods, ordered=True)
+        # 移除Categorical，避免和多选组件字符串不匹配
+        dashboard_df["统计周期"] = dashboard_df["统计周期"].astype(str)
     # 整合SKU数据
     sku_total_df = pd.concat(all_sku_total, ignore_index=True) if all_sku_total else pd.DataFrame()
     sku_week_df = pd.concat(all_sku_week, ignore_index=True) if all_sku_week else pd.DataFrame()
