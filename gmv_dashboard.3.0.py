@@ -333,58 +333,76 @@ def main():
 
     st.markdown("---")
 
-    with st.spinner("加载数据中..."):
-        data_dict = load_all_excel()
-    dashboard_df = data_dict["dashboard"]
-    periods = data_dict["periods"]
-    sku_total_df = data_dict["sku_total"]
-    sku_week_df = data_dict["sku_week"]
-
-    if dashboard_df is None or dashboard_df.empty:
-        st.error("❌ 未读取到有效店铺数据，请确保Excel文件已生成")
-        return
-
-    # 保存周期到session_state
-    st.session_state.period_order = periods
-    dashboard_df = add_growth(dashboard_df)
-
-    # 侧边栏筛选
+    # ---------------------- 关键修复：把侧边栏和数据加载移到最前面，保证永远显示 ----------------------
     with st.sidebar:
         st.markdown("### 🔍 筛选面板")
         st.markdown("---")
-        store_list = sorted(dashboard_df["店铺"].unique())
-        selected_stores = st.multiselect("🏪 选择店铺", store_list, default=store_list)
-        # 周期选择
-        if st.session_state.period_order:
-            selected_periods = st.multiselect(
-                "📅 选择周期",
-                st.session_state.period_order,
-                default=st.session_state.period_order
-            )
-        else:
-            st.error("⚠️ 未找到周期数据，请检查Excel文件")
-            selected_periods = []
-        # SKU榜单滑块
-        top_sku_num = st.slider("🏆 Top爆款SKU数量", 5, 50, 20)
-        st.markdown("---")
-        st.caption(f"✅ 加载成功: {len(store_list)} 个店铺, {len(periods)} 个周期")
-        if periods:
-            st.caption(f"📅 周期: {', '.join(periods)}")
 
-    # 筛选校验
+        # 1. 加载数据（放在侧边栏里，确保侧边栏一定会渲染）
+        with st.spinner("加载数据中..."):
+            data_dict = load_all_excel()
+
+        dashboard_df = data_dict["dashboard"]
+        periods = data_dict["periods"]
+        sku_total_df = data_dict["sku_total"]
+        sku_week_df = data_dict["sku_week"]
+
+        # 保存周期到session_state
+        st.session_state.period_order = periods
+
+        # 2. 处理数据为空的情况，侧边栏依然显示
+        if dashboard_df is None or dashboard_df.empty:
+            st.error("❌ 未读取到有效店铺数据，请确保Excel文件已生成")
+            store_list = []
+            selected_stores = []
+            selected_periods = []
+            top_sku_num = 20
+        else:
+            # 数据正常，处理周期和店铺
+            dashboard_df = add_growth(dashboard_df)
+            store_list = sorted(dashboard_df["店铺"].unique())
+            selected_stores = st.multiselect("🏪 选择店铺", store_list, default=store_list)
+
+            # 周期选择
+            if st.session_state.period_order:
+                selected_periods = st.multiselect(
+                    "📅 选择周期",
+                    st.session_state.period_order,
+                    default=st.session_state.period_order
+                )
+            else:
+                st.error("⚠️ 未找到周期数据，请检查Excel文件")
+                selected_periods = []
+
+            # SKU榜单滑块
+            top_sku_num = st.slider("🏆 Top爆款SKU数量", 5, 50, 20)
+            st.markdown("---")
+            st.caption(f"✅ 加载成功: {len(store_list)} 个店铺, {len(periods)} 个周期")
+            if periods:
+                st.caption(f"📅 周期: {', '.join(periods)}")
+
+    # ---------------------- 主页面渲染 ----------------------
+    # 如果数据为空，只显示提示，不退出页面
+    if dashboard_df is None or dashboard_df.empty:
+        st.warning("⚠️ 数据加载失败，请检查Excel文件路径和格式，或刷新页面重试")
+        return
+
+    # 筛选逻辑（空数据只提示，不return）
     if not selected_stores:
         st.warning("⚠️ 请至少选择一个店铺")
-        return
-    if not selected_periods:
+        df_filtered = dashboard_df.iloc[:0]
+    elif not selected_periods:
         st.warning("⚠️ 请至少选择一个周期")
-        return
+        df_filtered = dashboard_df.iloc[:0]
+    else:
+        filter_condition = (
+            dashboard_df["店铺"].isin(selected_stores)
+            & dashboard_df["统计周期"].isin(selected_periods)
+        )
+        df_filtered = dashboard_df[filter_condition].copy()
+        if df_filtered.empty:
+            st.warning("⚠️ 当前筛选条件下没有数据，请重新选择店铺/周期")
 
-    # 筛选基础数据
-    filter_condition = (dashboard_df["店铺"].isin(selected_stores)) & (dashboard_df["统计周期"].isin(selected_periods))
-    df_filtered = dashboard_df[filter_condition].copy()
-    if df_filtered.empty:
-        st.warning("⚠️ 没有符合筛选条件的数据")
-        return
     df_pivot_table = create_store_pivot_table(df_filtered, selected_periods)
 
     # ==================== 全局总览指标（精美卡片样式） ====================
