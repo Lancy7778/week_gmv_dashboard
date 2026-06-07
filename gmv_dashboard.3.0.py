@@ -162,8 +162,7 @@ def sort_period_key(period):
     return (0, 0, 0, 0)
 
 
-# 加载数据（兼容多sheet，本地路径+云端路径双适配）
-@st.cache_data(ttl=3600)
+# 加载数据（去掉全局缓存，每次都重读，解决“只有第一次显示”）
 def load_all_excel() -> Dict[str, object]:
     # 双路径兼容：本地Windows / Streamlit云端
     local_folder = r"D:\儒易工作内容\每周汇报GMV\测试周GMV自动化流程\各店铺周汇总报表"
@@ -455,25 +454,8 @@ def main():
         """, unsafe_allow_html=True)
     st.markdown("---")
 
-    # ==================== 多周期店铺对比图表 ====================
-    st.markdown('<div class="section-title">📈 多周期店铺对比图表</div>', unsafe_allow_html=True)
-    if not df_filtered.empty:
-        col1, col2 = st.columns(2)
-        with col1:
-            fig = px.bar(df_filtered, x="店铺", y="GMV", color="统计周期",
-                         barmode="group", title="各店铺GMV多周期对比",
-                         color_discrete_sequence=COLOR_PALETTE)
-            fig.update_layout(height=400)
-            st.plotly_chart(fig, use_container_width=True)
-        with col2:
-            fig = px.bar(df_filtered, x="店铺", y="销量", color="统计周期",
-                         barmode="group", title="各店铺销量多周期对比",
-                         color_discrete_sequence=COLOR_PALETTE)
-            fig.update_layout(height=400)
-            st.plotly_chart(fig, use_container_width=True)
-    st.markdown("---")
 
-    # 全局周期双轴趋势图
+    # ==================== 先显示：全平台周期趋势分析（带数值） ====================
     st.markdown('<div class="section-title">📉 全平台周期趋势分析</div>', unsafe_allow_html=True)
     cycle_summary = []
     for p in selected_periods:
@@ -487,22 +469,92 @@ def main():
     if cycle_summary:
         cs_df = pd.DataFrame(cycle_summary)
         fig = go.Figure()
-        fig.add_trace(go.Bar(x=cs_df["周期"], y=cs_df["总销量"], name="总销量", marker_color="#70AD47"))
-        fig.add_trace(go.Scatter(x=cs_df["周期"], y=cs_df["总GMV"], name="总GMV", marker_color="#4472C4", yaxis="y2", mode="lines+markers"))
-        fig.update_layout(height=400, yaxis=dict(title="总销量"), yaxis2=dict(title="总GMV", overlaying="y", side="right"))
+        # 销量柱状图 + 显示数值
+        fig.add_trace(go.Bar(
+            x=cs_df["周期"],
+            y=cs_df["总销量"],
+            name="总销量",
+            marker_color="#70AD47",
+            text=cs_df["总销量"],
+            textposition="outside"
+        ))
+        # GMV折线图 + 显示数值
+        fig.add_trace(go.Scatter(
+            x=cs_df["周期"],
+            y=cs_df["总GMV"],
+            name="总GMV",
+            marker_color="#4472C4",
+            yaxis="y2",
+            mode="lines+markers",
+            text=cs_df["总GMV"].apply(lambda x: f"{x:,.0f}"),
+            textposition="top center"
+        ))
+        fig.update_layout(
+            height=400,
+            yaxis=dict(title="总销量"),
+            yaxis2=dict(title="总GMV", overlaying="y", side="right")
+        )
         st.plotly_chart(fig, use_container_width=True)
     st.markdown("---")
+
+
+    # ==================== 后显示：多周期店铺对比图表 ====================
+    st.markdown('<div class="section-title">📈 多周期店铺对比图表</div>', unsafe_allow_html=True)
+    if not df_filtered.empty:
+        col1, col2 = st.columns(2)
+        with col1:
+            fig = px.bar(
+                df_filtered,
+                x="店铺",
+                y="GMV",
+                color="统计周期",
+                barmode="group",
+                title="各店铺GMV多周期对比",
+                color_discrete_sequence=COLOR_PALETTE
+            )
+            fig.update_layout(height=400)
+            st.plotly_chart(fig, use_container_width=True)
+        with col2:
+            fig = px.bar(
+                df_filtered,
+                x="店铺",
+                y="销量",
+                color="统计周期",
+                barmode="group",
+                title="各店铺销量多周期对比",
+                color_discrete_sequence=COLOR_PALETTE
+            )
+            fig.update_layout(height=400)
+            st.plotly_chart(fig, use_container_width=True)
+    st.markdown("---")
+
 
     # 单店铺多周期趋势
     st.markdown('<div class="section-title">🏪 单店铺周度多周期趋势</div>', unsafe_allow_html=True)
     if not df_filtered.empty:
         col1, col2 = st.columns(2)
         with col1:
-            fig = px.line(df_filtered, x="统计周期", y="GMV", color="店铺", markers=True, title="店铺GMV周期趋势", color_discrete_sequence=COLOR_PALETTE)
+            fig = px.line(
+                df_filtered,
+                x="统计周期",
+                y="GMV",
+                color="店铺",
+                markers=True,
+                title="店铺GMV周期趋势",
+                color_discrete_sequence=COLOR_PALETTE
+            )
             fig.update_layout(height=400)
             st.plotly_chart(fig, use_container_width=True)
         with col2:
-            fig = px.bar(df_filtered, x="统计周期", y="销量", color="店铺", barmode="group", title="店铺销量周期对比", color_discrete_sequence=COLOR_PALETTE)
+            fig = px.bar(
+                df_filtered,
+                x="统计周期",
+                y="销量",
+                color="店铺",
+                barmode="group",
+                title="店铺销量周期对比",
+                color_discrete_sequence=COLOR_PALETTE
+            )
             fig.update_layout(height=400)
             st.plotly_chart(fig, use_container_width=True)
     st.markdown("---")
@@ -510,11 +562,16 @@ def main():
     # 店铺GMV环比横向柱状图
     if not df_pivot_table.empty and "GMV环比%" in df_pivot_table.columns:
         st.markdown('<div class="section-title">📊 各店铺GMV环比变化率</div>', unsafe_allow_html=True)
-        fig = px.bar(df_pivot_table, y="店铺", x="GMV环比%", orientation="h",
-                     title="店铺GMV环比变化率排行",
-                     color="GMV环比%",
-                     color_continuous_scale=[(0, "#d73027"), (0.3, "#f0f0f0"), (0.7, "#f0f0f0"), (1, "#1a9850")],
-                     text_auto='.1f')
+        fig = px.bar(
+            df_pivot_table,
+            y="店铺",
+            x="GMV环比%",
+            orientation="h",
+            title="店铺GMV环比变化率排行",
+            color="GMV环比%",
+            color_continuous_scale=[(0, "#d73027"), (0.3, "#f0f0f0"), (0.7, "#f0f0f0"), (1, "#1a9850")],
+            text_auto='.1f'
+        )
         fig.update_layout(height=max(400, len(df_pivot_table) * 35))
         st.plotly_chart(fig, use_container_width=True)
         st.markdown("---")
@@ -524,7 +581,14 @@ def main():
         col1, col2 = st.columns(2)
         with col1:
             st.markdown('<div class="section-title">🥧 全周期GMV店铺占比</div>', unsafe_allow_html=True)
-            fig = px.pie(df_pivot_table, values="全周期累计GMV", names="店铺", hole=0.3, title="店铺GMV市场占比", color_discrete_sequence=COLOR_PALETTE)
+            fig = px.pie(
+                df_pivot_table,
+                values="全周期累计GMV",
+                names="店铺",
+                hole=0.3,
+                title="店铺GMV市场占比",
+                color_discrete_sequence=COLOR_PALETTE
+            )
             fig.update_traces(texttemplate="%{label}<br>%{percent:.1%}", textposition="inside")
             fig.update_layout(height=400)
             st.plotly_chart(fig, use_container_width=True)
